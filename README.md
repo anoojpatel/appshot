@@ -14,13 +14,13 @@ Open Terminal and paste this:
 curl -fsSL https://raw.githubusercontent.com/anoojpatel/appshot/main/install.sh | zsh
 ```
 
-That's it. Appshot is now in your Applications folder and running. You'll see a small crosshair icon in your menu bar.
+After that, Appshot is in your Applications folder and running. You'll see a small crosshair icon in your menu bar.
 
 Works on macOS 13 or newer, on both Apple silicon and Intel Macs.
 
-## First run: two permissions
+## Permissions required
 
-macOS will ask for these the first time. Both are one-time.
+macOS will ask for these the first time you use Appshot, and only once.
 
 1. **Screen Recording.** Lets Appshot take the screenshot. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording. Then quit Appshot from its menu and open it again. macOS needs the restart.
 2. **Accessibility.** Lets Appshot paste into Claude or Codex for you. Turn it on in System Settings → Privacy & Security → Accessibility. If you skip this, Appshot still works. It just leaves the screenshot on your clipboard and you press ⌘V yourself.
