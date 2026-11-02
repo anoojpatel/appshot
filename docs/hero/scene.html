@@ -1,0 +1,313 @@
+<!doctype html>
+<html><head><meta charset="utf-8"></head>
+<body style="margin:0;background:#111">
+<canvas id="c" width="960" height="600"></canvas>
+<script>
+const W = 960, H = 600, DUR = 10;
+const c = document.getElementById('c');
+const g = c.getContext('2d');
+const FONT = '-apple-system, "SF Pro Text", "Helvetica Neue", sans-serif';
+
+// ---------- easing / helpers ----------
+const clamp = (x, a = 0, b = 1) => Math.min(b, Math.max(a, x));
+const seg = (t, a, b) => clamp((t - a) / (b - a));
+const easeInOut = x => x < .5 ? 4 * x * x * x : 1 - Math.pow(-2 * x + 2, 3) / 2;
+const easeOut = x => 1 - Math.pow(1 - x, 3);
+const easeBack = x => { const k = 1.70158; return 1 + (k + 1) * Math.pow(x - 1, 3) + k * Math.pow(x - 1, 2); };
+const lerp = (a, b, x) => a + (b - a) * x;
+const lerpP = (p, q, x) => ({ x: lerp(p.x, q.x, x), y: lerp(p.y, q.y, x) });
+
+function rr(x, y, w, h, r) {
+  g.beginPath(); g.moveTo(x + r, y); g.arcTo(x + w, y, x + w, y + h, r); g.arcTo(x + w, y + h, x, y + h, r);
+  g.arcTo(x, y + h, x, y, r); g.arcTo(x, y, x + w, y, r); g.closePath();
+}
+function text(s, x, y, size, color, weight = 400, align = 'left') {
+  g.font = `${weight} ${size}px ${FONT}`; g.fillStyle = color; g.textAlign = align; g.textBaseline = 'middle';
+  g.fillText(s, x, y);
+}
+
+const RED = '#ff1f2e', CORE = '#ffe0e0';
+
+// ---------- the "template app" ----------
+const WIN = { x: 60, y: 34, w: 840, h: 452 };
+const SAVE = { x: 762, y: 92, w: 112, h: 32 };
+const BARS = [0.62, 0.74, 0.55, 0.81, 0.22, 0.69, 0.77];
+const CHART = { x: 250, y: 252, w: 624, h: 214 };
+function barRect(i) {
+  const bw = 44, gap = (CHART.w - 48 - BARS.length * bw) / (BARS.length - 1);
+  const maxH = CHART.h - 78, h = BARS[i] * maxH;
+  const x = CHART.x + 24 + i * (bw + gap), base = CHART.y + CHART.h - 30;
+  return { x, y: base - h, w: bw, h, base };
+}
+
+function drawApp() {
+  // desktop
+  const bg = g.createLinearGradient(0, 0, W, H);
+  bg.addColorStop(0, '#1d2340'); bg.addColorStop(1, '#2a1f3d');
+  g.fillStyle = bg; g.fillRect(0, 0, W, H);
+
+  // window
+  g.save(); g.shadowColor = 'rgba(0,0,0,.45)'; g.shadowBlur = 40; g.shadowOffsetY = 14;
+  rr(WIN.x, WIN.y, WIN.w, WIN.h, 12); g.fillStyle = '#f7f7f9'; g.fill(); g.restore();
+  g.save(); rr(WIN.x, WIN.y, WIN.w, WIN.h, 12); g.clip();
+
+  // sidebar
+  g.fillStyle = '#eceef3'; g.fillRect(WIN.x, WIN.y, 172, WIN.h);
+  g.fillStyle = '#dfe2ea'; g.fillRect(WIN.x + 172, WIN.y, 1, WIN.h);
+  ['#ff5f57', '#febc2e', '#28c840'].forEach((col, i) => {
+    g.beginPath(); g.arc(WIN.x + 20 + i * 20, WIN.y + 20, 6, 0, 7); g.fillStyle = col; g.fill();
+  });
+  rr(WIN.x + 18, WIN.y + 46, 26, 26, 7); g.fillStyle = '#5b5bf0'; g.fill();
+  text('A', WIN.x + 31, WIN.y + 59.5, 14, '#fff', 700, 'center');
+  text('Acme', WIN.x + 54, WIN.y + 59, 15, '#1c1d22', 650);
+  ['Overview', 'Customers', 'Revenue', 'Reports', 'Settings'].forEach((s, i) => {
+    const y = WIN.y + 104 + i * 34;
+    if (i === 0) { rr(WIN.x + 10, y - 14, 152, 28, 7); g.fillStyle = '#dcdffa'; g.fill(); }
+    rr(WIN.x + 22, y - 6, 12, 12, 3); g.fillStyle = i === 0 ? '#5b5bf0' : '#a3a8b8'; g.fill();
+    text(s, WIN.x + 44, y, 13.5, i === 0 ? '#2b2b8f' : '#4a4e5c', i === 0 ? 600 : 450);
+  });
+
+  // header
+  text('Overview', 252, 108, 24, '#16171c', 700);
+  text('Last 7 days', 254, 134, 12.5, '#8a8f9e');
+  rr(SAVE.x, SAVE.y, SAVE.w, SAVE.h, 8); g.fillStyle = '#e3e5ec'; g.fill();
+  text('Save changes', SAVE.x + SAVE.w / 2, SAVE.y + SAVE.h / 2 + .5, 13, '#4a4e5c', 600, 'center');
+
+  // stat cards
+  const cards = [['Revenue', '$48.2k', '+12%'], ['Actve users', '1,204', '+3%'], ['Churn', '2.1%', '−0.4%']];
+  cards.forEach(([label, val, d], i) => {
+    const x = 250 + i * 212, y = 152;
+    rr(x, y, 200, 84, 10); g.fillStyle = '#fff'; g.fill();
+    g.strokeStyle = '#e4e6ec'; g.lineWidth = 1; g.stroke();
+    text(label, x + 16, y + 24, 12.5, '#7b8091', 500);
+    text(val, x + 16, y + 54, 24, '#16171c', 700);
+    text(d, x + 184, y + 56, 12, i === 2 ? '#1f9d55' : '#1f9d55', 600, 'right');
+  });
+
+  // chart
+  rr(CHART.x, CHART.y, CHART.w, CHART.h, 10); g.fillStyle = '#fff'; g.fill();
+  g.strokeStyle = '#e4e6ec'; g.stroke();
+  text('Daily signups', CHART.x + 16, CHART.y + 24, 13.5, '#16171c', 650);
+  ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'].forEach((d, i) => {
+    const b = barRect(i);
+    rr(b.x, b.y, b.w, b.h, 6); g.fillStyle = '#7b7bf5'; g.fill();
+    text(d, b.x + b.w / 2, b.base + 16, 11.5, '#8a8f9e', 500, 'center');
+  });
+  g.restore();
+}
+
+// ---------- laser marks (same look as the app) ----------
+function strokeLaser(build) {
+  g.save(); g.lineCap = 'round'; g.lineJoin = 'round';
+  g.shadowColor = 'rgba(255,31,46,.9)'; g.shadowBlur = 12;
+  build(); g.strokeStyle = RED; g.lineWidth = 5; g.stroke();
+  g.shadowBlur = 0; g.strokeStyle = CORE; g.lineWidth = 1.6; g.stroke();
+  g.restore();
+}
+function badge(n, x, y, s) {
+  if (s <= 0) return;
+  g.save(); g.translate(x + 12, y + 12); g.scale(s, s);
+  g.shadowColor = 'rgba(0,0,0,.3)'; g.shadowBlur = 6; g.shadowOffsetY = 2;
+  g.beginPath(); g.arc(0, 0, 12, 0, 7); g.fillStyle = RED; g.fill();
+  g.shadowColor = 'transparent';
+  text(String(n), 0, 0.5, 14, '#fff', 700, 'center');
+  g.restore();
+}
+function laserDot(p, a = 1) {
+  if (!p || a <= 0) return;
+  g.save(); g.globalAlpha = a;
+  g.shadowColor = RED; g.shadowBlur = 16;
+  g.beginPath(); g.arc(p.x, p.y, 6, 0, 7); g.fillStyle = RED; g.fill();
+  g.shadowBlur = 0; g.beginPath(); g.arc(p.x, p.y, 2.5, 0, 7); g.fillStyle = CORE; g.fill();
+  g.restore();
+}
+function arrowCursor(p) {
+  g.save(); g.translate(p.x, p.y);
+  g.beginPath(); g.moveTo(0, 0); g.lineTo(0, 17); g.lineTo(4.2, 13); g.lineTo(7, 19.5); g.lineTo(9.6, 18.4);
+  g.lineTo(6.9, 12); g.lineTo(12.3, 12); g.closePath();
+  g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 4; g.shadowOffsetY = 1;
+  g.fillStyle = '#111'; g.fill(); g.shadowColor = 'transparent';
+  g.strokeStyle = '#fff'; g.lineWidth = 1.4; g.stroke();
+  g.restore();
+}
+
+// circle #1: a slightly hand-drawn loop around "Save changes"
+const C1 = { cx: SAVE.x + SAVE.w / 2, cy: SAVE.y + SAVE.h / 2, rx: 76, ry: 30 };
+function circlePt(u) {
+  const a = -Math.PI * 0.85 + u * Math.PI * 2.12;
+  const wob = 1 + 0.05 * Math.sin(u * 9) + 0.06 * u;
+  return { x: C1.cx + Math.cos(a) * C1.rx * wob, y: C1.cy + Math.sin(a) * C1.ry * wob };
+}
+// arrow #2 toward the short Friday bar
+const FRI = barRect(4);
+const A2 = { a: { x: 560, y: 300 }, b: { x: FRI.x + FRI.w / 2 - 4, y: FRI.y - 10 } };
+// point #3 on the typo
+const P3 = { x: 515, y: 176 };
+
+// ---------- overlay bar ----------
+const BAR = { x: 150, w: 660, h: 78, y: 600 - 22 - 78 };
+const PROMPT = 'Make #1 blue, bump #2 to match, and fix the typo at #3';
+function drawBar(slide, typed, caret, sendDown, count) {
+  if (slide <= 0) return;
+  const y = lerp(H + 10, BAR.y, easeOut(slide));
+  g.save(); g.globalAlpha = clamp(slide * 1.4);
+  g.shadowColor = 'rgba(0,0,0,.4)'; g.shadowBlur = 24; g.shadowOffsetY = 8;
+  rr(BAR.x, y, BAR.w, BAR.h, 14); g.fillStyle = 'rgba(32,32,38,.96)'; g.fill();
+  g.shadowColor = 'transparent';
+  g.strokeStyle = 'rgba(255,255,255,.1)'; g.lineWidth = 1; g.stroke();
+
+  // segmented control
+  const sx = BAR.x + 12, sy = y + 11;
+  rr(sx, sy, 214, 28, 7); g.fillStyle = '#3a3a42'; g.fill();
+  rr(sx + 2, sy + 2, 64, 24, 6); g.fillStyle = '#6b6b78'; g.fill();
+  [['Claude', 34], ['Codex', 104], ['Last app', 171]].forEach(([s, dx], i) =>
+    text(s, sx + dx, sy + 14.5, 12.5, i === 0 ? '#fff' : '#c8c8d2', i === 0 ? 600 : 450, 'center'));
+
+  // text field
+  const fx = BAR.x + 238, fw = BAR.w - 238 - 98;
+  rr(fx, sy, fw, 28, 7); g.fillStyle = '#18181c'; g.fill();
+  g.strokeStyle = typed.length || caret ? 'rgba(120,140,255,.75)' : 'rgba(255,255,255,.14)'; g.stroke();
+  g.save(); rr(fx, sy, fw, 28, 7); g.clip();
+  g.font = `400 13px ${FONT}`;
+  const tw = g.measureText(typed).width, off = Math.max(0, tw - (fw - 22));
+  if (typed) text(typed, fx + 10 - off, sy + 14.5, 13, '#f2f2f5');
+  else text('Tell the agent what to do with the marked spots…', fx + 10, sy + 14.5, 13, '#7d7d88');
+  if (caret) { g.fillStyle = '#9aa8ff'; g.fillRect(fx + 11 + tw - off, sy + 7, 1.5, 15); }
+  g.restore();
+
+  // send button
+  const bx = BAR.x + BAR.w - 86;
+  rr(bx, sy, 74, 28, 7); g.fillStyle = sendDown ? '#3d4fd6' : '#5865f2'; g.fill();
+  text('Send ↩', bx + 37, sy + 14.5, 13, '#fff', 600, 'center');
+
+  text('drag = circle   ·   shift-drag = arrow   ·   click = point   ·   ⌘Z undo', BAR.x + 16, y + 59, 11.5, '#8e8e9a');
+  text(count ? `${count} mark${count > 1 ? 's' : ''}` : 'no marks yet', BAR.x + BAR.w - 16, y + 59, 11.5, '#ff5a64', 600, 'right');
+  g.restore();
+}
+
+function keyChip(a, label, x, y, size = 1) {
+  if (a <= 0) return;
+  g.save(); g.globalAlpha = a; g.translate(x, y); g.scale(size, size);
+  g.font = `600 15px ${FONT}`;
+  const w = g.measureText(label).width + 28;
+  g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 16; g.shadowOffsetY = 4;
+  rr(-w / 2, -18, w, 36, 10); g.fillStyle = 'rgba(28,28,34,.92)'; g.fill();
+  g.shadowColor = 'transparent';
+  text(label, 0, 0.5, 15, '#fff', 600, 'center');
+  g.restore();
+}
+
+function toast(a, slide) {
+  if (a <= 0) return;
+  const x = lerp(W + 10, W - 310, easeOut(slide)), y = 22;
+  g.save(); g.globalAlpha = a;
+  g.shadowColor = 'rgba(0,0,0,.35)'; g.shadowBlur = 22; g.shadowOffsetY = 6;
+  rr(x, y, 288, 70, 14); g.fillStyle = 'rgba(30,30,36,.96)'; g.fill();
+  g.shadowColor = 'transparent';
+  // mini thumbnail of the marked screenshot
+  rr(x + 12, y + 12, 72, 46, 6); g.fillStyle = '#eef0f5'; g.fill();
+  g.fillStyle = '#d5d8e3'; g.fillRect(x + 12, y + 12, 15, 46);
+  g.save(); g.strokeStyle = RED; g.lineWidth = 1.6;
+  g.beginPath(); g.ellipse(x + 72, y + 20, 9, 4.5, 0, 0, 7); g.stroke();
+  g.beginPath(); g.moveTo(x + 50, y + 38); g.lineTo(x + 58, y + 46); g.stroke();
+  g.beginPath(); g.arc(x + 46, y + 27, 2.2, 0, 7); g.fillStyle = RED; g.fill();
+  g.restore();
+  g.beginPath(); g.arc(x + 104, y + 25, 8, 0, 7); g.fillStyle = '#28c840'; g.fill();
+  g.strokeStyle = '#fff'; g.lineWidth = 2; g.lineCap = 'round';
+  g.beginPath(); g.moveTo(x + 100.5, y + 25); g.lineTo(x + 103, y + 27.5); g.lineTo(x + 107.5, y + 22.5); g.stroke();
+  text('Pasted into Claude', x + 118, y + 25, 13.5, '#fff', 600);
+  text('screenshot + note + 3 marks', x + 96, y + 47, 12, '#a0a0ac');
+  g.restore();
+}
+
+// ---------- timeline ----------
+const P0 = { x: 470, y: 330 }, P1 = { x: 690, y: 210 };
+function render(t) {
+  g.clearRect(0, 0, W, H);
+  drawApp();
+
+  const frozen = t >= 1.3 && t < 8.6;
+  const overlayA = 1 - seg(t, 8.15, 8.6);        // marks + dim fade out after send
+  if (t >= 1.3) {
+    g.fillStyle = `rgba(0,0,0,${0.10 * overlayA})`; g.fillRect(0, 0, W, H);
+  }
+
+  // marks
+  g.save(); g.globalAlpha = t >= 1.3 ? overlayA : 0;
+  const u1 = easeInOut(seg(t, 2.1, 3.0));
+  if (u1 > 0) strokeLaser(() => {
+    const n = Math.max(2, Math.floor(u1 * 120));
+    g.beginPath(); const p = circlePt(0); g.moveTo(p.x, p.y);
+    for (let i = 1; i <= n; i++) { const q = circlePt(i / 120 * (u1 * 120 / n)); g.lineTo(q.x, q.y); }
+  });
+  const u2 = easeInOut(seg(t, 3.55, 4.15));
+  if (u2 > 0) strokeLaser(() => {
+    const a = A2.a, b = lerpP(A2.a, A2.b, u2);
+    g.beginPath(); g.moveTo(a.x, a.y); g.lineTo(b.x, b.y);
+    if (u2 > 0.15) {
+      const ang = Math.atan2(b.y - a.y, b.x - a.x), hd = 20 * clamp((u2 - .15) / .3), sp = Math.PI / 7;
+      g.moveTo(b.x, b.y); g.lineTo(b.x - hd * Math.cos(ang - sp), b.y - hd * Math.sin(ang - sp));
+      g.moveTo(b.x, b.y); g.lineTo(b.x - hd * Math.cos(ang + sp), b.y - hd * Math.sin(ang + sp));
+    }
+  });
+  const u3 = seg(t, 5.0, 5.25);
+  if (u3 > 0) {
+    const r = 18 * easeBack(u3);
+    strokeLaser(() => { g.beginPath(); g.arc(P3.x, P3.y, r, 0, 7); });
+    g.save(); g.shadowColor = RED; g.shadowBlur = 12;
+    g.beginPath(); g.arc(P3.x, P3.y, 6, 0, 7); g.fillStyle = RED; g.fill(); g.restore();
+    g.beginPath(); g.arc(P3.x, P3.y, 2.5, 0, 7); g.fillStyle = CORE; g.fill();
+  }
+  badge(1, C1.cx - C1.rx - 14, C1.cy - C1.ry - 16, easeBack(seg(t, 3.0, 3.25)));
+  badge(2, A2.a.x - 30, A2.a.y - 26, easeBack(seg(t, 4.15, 4.4)));
+  badge(3, P3.x + 16, P3.y - 34, easeBack(seg(t, 5.25, 5.5)));
+  g.restore();
+
+  // bottom bar
+  const count = (t >= 3.0) + (t >= 4.15) + (t >= 5.0);
+  const typedN = Math.floor(PROMPT.length * seg(t, 5.6, 7.5));
+  const caret = t > 5.45 && t < 8.1 && (typedN < PROMPT.length || Math.floor(t * 2.5) % 2 === 0);
+  const slide = t < 8.1 ? seg(t, 1.35, 1.75) : 1 - seg(t, 8.1, 8.5);
+  drawBar(slide, PROMPT.slice(0, typedN), caret, t >= 7.95 && t < 8.15, count);
+
+  // flash on capture
+  const fl = seg(t, 1.3, 1.55);
+  if (fl > 0 && fl < 1) { g.fillStyle = `rgba(255,255,255,${0.35 * (1 - fl)})`; g.fillRect(0, 0, W, H); }
+
+  // hotkey + shift chips
+  const ka = seg(t, 0.75, 0.95) * (1 - seg(t, 1.55, 1.8));
+  keyChip(ka, '⌃  ⌥  L', W / 2, 286, lerp(0.9, 1, easeBack(seg(t, 0.75, 1.0))));
+
+  // pointer path
+  let p;
+  if (t < 1.3) p = lerpP(P0, P1, easeInOut(seg(t, 0.1, 1.1)));
+  else if (t < 2.1) p = lerpP(P1, circlePt(0), easeInOut(seg(t, 1.6, 2.1)));
+  else if (t < 3.15) p = circlePt(u1);
+  else if (t < 3.55) p = lerpP(circlePt(1), A2.a, easeInOut(seg(t, 3.15, 3.5)));
+  else if (t < 4.3) p = lerpP(A2.a, A2.b, u2);
+  else if (t < 5.0) p = lerpP(A2.b, P3, easeInOut(seg(t, 4.4, 4.95)));
+  else if (t < 7.6) p = P3;
+  else if (t < 8.1) p = lerpP(P3, { x: BAR.x + BAR.w - 50, y: BAR.y + 25 }, easeInOut(seg(t, 7.55, 7.95)));
+  else p = lerpP({ x: BAR.x + BAR.w - 50, y: BAR.y + 25 }, P0, easeInOut(seg(t, 8.6, 9.9)));
+
+  if (t >= 3.5 && t < 4.3) keyChip(seg(t, 3.45, 3.55) * (1 - seg(t, 4.15, 4.3)), '⇧ shift', p.x + 46, p.y + 30, 0.8);
+
+  if (frozen && !(t >= 7.85)) laserDot(p);
+  else arrowCursor(p);
+
+  // result toast
+  const ta = seg(t, 8.55, 8.8) * (1 - seg(t, 9.55, 9.85));
+  toast(ta, seg(t, 8.55, 8.95));
+}
+
+window.W = W; window.H = H; window.DUR = DUR;
+window.frame = t => {
+  render(t);
+  const d = g.getImageData(0, 0, W, H).data;
+  let s = '';
+  for (let i = 0; i < d.length; i += 0x8000) s += String.fromCharCode.apply(null, d.subarray(i, i + 0x8000));
+  return btoa(s);
+};
+window.png = t => { render(t); return c.toDataURL('image/png'); };
+</script>
+</body></html>

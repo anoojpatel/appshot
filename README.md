@@ -1,5 +1,7 @@
 # Appshot
 
+<p align="center"><img src="docs/hero.gif" width="720" alt="Circling a button, drawing an arrow, and dropping a point on an app, then typing a note and sending it to Claude"></p>
+
 Point at your screen so your coding agent knows what you mean.
 
 Press a shortcut, circle the thing you're talking about with a red laser pen, type what you want, and hit Return. Appshot drops the marked-up screenshot and your note into Claude or Codex for you.
