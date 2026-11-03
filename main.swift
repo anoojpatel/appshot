@@ -406,13 +406,56 @@ func after(_ s: Double, _ f: @escaping () -> Void) { DispatchQueue.main.asyncAft
 
 // MARK: - App
 
-final class AppDelegate: NSObject, NSApplicationDelegate {
+// MARK: - Permissions
+
+enum Permission {
+    case screenRecording, accessibility
+
+    var name: String { self == .screenRecording ? "Screen Recording" : "Accessibility" }
+    var granted: Bool { self == .screenRecording ? CGPreflightScreenCaptureAccess() : AXIsProcessTrusted() }
+
+    /// Asks macOS to list Appshot in the pane (and prompt, the first time).
+    func request() {
+        if self == .screenRecording { CGRequestScreenCaptureAccess() }
+        else { _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) }
+    }
+
+    func openSettings() {
+        let pane = self == .screenRecording ? "Privacy_ScreenCapture" : "Privacy_Accessibility"
+        NSWorkspace.shared.open(URL(string: "x-apple.systempreferences:com.apple.preference.security?\(pane)")!)
+    }
+}
+
+/// macOS remembers a permission for one exact build of an app. If Appshot was
+/// rebuilt or reinstalled, its old switch can look on while this copy is off.
+func permissionAlert(_ p: Permission, why: String, fallback: String? = nil) {
+    NSApp.activate(ignoringOtherApps: true)
+    let a = NSAlert()
+    a.messageText = "Appshot needs \(p.name) permission"
+    a.informativeText = """
+        \(why)\(fallback.map { "\n\n" + $0 } ?? "")
+
+        In System Settings, turn on Appshot under \(p.name).
+
+        Already on? It's left over from an older copy of Appshot. Select it, click the − button to remove it, then quit and reopen Appshot and turn it on again.
+        """
+    a.addButton(withTitle: "Open System Settings")
+    a.addButton(withTitle: "Not Now")
+    if a.runModal() == .alertFirstButtonReturn {
+        p.request()
+        p.openSettings()
+    }
+}
+
+final class AppDelegate: NSObject, NSApplicationDelegate, NSMenuDelegate {
     static var shared: AppDelegate!
     var statusItem: NSStatusItem!
     var overlay: Overlay?
     var previousApp: NSRunningApplication?
     var hotKeyRef: EventHotKeyRef?
     let cliItem = NSMenuItem(title: "Start a new CLI session instead of pasting", action: #selector(toggleCLI), keyEquivalent: "")
+    let screenItem = NSMenuItem(title: "", action: #selector(fixScreenRecording), keyEquivalent: "")
+    let axItem = NSMenuItem(title: "", action: #selector(fixAccessibility), keyEquivalent: "")
 
     var useCLI: Bool {
         get { UserDefaults.standard.bool(forKey: "useCLI") }
@@ -439,14 +482,17 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         cliItem.state = useCLI ? .on : .off
         menu.addItem(cliItem)
         menu.addItem(NSMenuItem(title: "Open Screenshots Folder", action: #selector(openFolder), keyEquivalent: ""))
-        menu.addItem(NSMenuItem(title: "Grant Permissions…", action: #selector(requestPermissions), keyEquivalent: ""))
+        menu.addItem(.separator())
+        menu.addItem(screenItem)
+        menu.addItem(axItem)
         menu.addItem(.separator())
         menu.addItem(NSMenuItem(title: "Quit Appshot", action: #selector(NSApplication.terminate(_:)), keyEquivalent: "q"))
         menu.items.forEach { if $0.action != #selector(NSApplication.terminate(_:)) { $0.target = self } }
+        menu.delegate = self
         statusItem.menu = menu
 
         registerHotKey()
-        if !CGPreflightScreenCaptureAccess() { CGRequestScreenCaptureAccess() }
+        if !Permission.screenRecording.granted { Permission.screenRecording.request() }
         if CommandLine.arguments.contains("--capture") { after(0.3) { self.capture() } }
     }
 
@@ -462,13 +508,28 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc func toggleCLI() { useCLI.toggle(); cliItem.state = useCLI ? .on : .off }
     @objc func openFolder() { NSWorkspace.shared.open(shotsDir) }
-    @objc func requestPermissions() {
-        CGRequestScreenCaptureAccess()
-        _ = AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary)
+
+    // Live permission status, refreshed every time the menu opens.
+    func menuWillOpen(_ menu: NSMenu) {
+        for (item, p) in [(screenItem, Permission.screenRecording), (axItem, Permission.accessibility)] {
+            item.title = p.granted ? "\(p.name): on" : "\(p.name): off. Click to fix…"
+            item.image = NSImage(systemSymbolName: p.granted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill",
+                                 accessibilityDescription: nil)
+        }
+    }
+
+    @objc func fixScreenRecording() { fix(.screenRecording) }
+    @objc func fixAccessibility() { fix(.accessibility) }
+    private func fix(_ p: Permission) {
+        if p.granted { p.openSettings() } else { p.request(); p.openSettings() }
     }
 
     @objc func capture() {
         guard overlay == nil else { return }
+        // Without permission, screencapture silently returns just the wallpaper.
+        guard Permission.screenRecording.granted else {
+            return permissionAlert(.screenRecording, why: "It needs this to take the screenshot you draw on.")
+        }
         let front = NSWorkspace.shared.frontmostApplication
         previousApp = front?.bundleIdentifier == Bundle.main.bundleIdentifier ? previousApp : front
 
@@ -580,11 +641,12 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
     /// file path, which claude/codex CLIs read); GUI apps get the image, then the text.
     /// Nothing is submitted — you review and hit Return yourself.
     func paste(into app: NSRunningApplication, image: NSImage?, text: String) {
-        guard AXIsProcessTrustedWithOptions([kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true] as CFDictionary) else {
+        guard Permission.accessibility.granted else {
             setPasteboard(image: image, text: text)
+            permissionAlert(.accessibility, why: "It needs this to paste into \(app.localizedName ?? "the app") for you.",
+                            fallback: "For now, your screenshot is on the clipboard. Press ⌘V to paste it.")
             app.activate()
-            return alert("Paste it yourself (⌘V)",
-                         "Appshot needs Accessibility permission to paste for you (System Settings → Privacy & Security → Accessibility). The screenshot is on your clipboard.")
+            return
         }
         let isTerminal = terminalBundleIDs.contains(app.bundleIdentifier ?? "")
         app.activate()

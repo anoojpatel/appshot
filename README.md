@@ -27,6 +27,8 @@ macOS will ask for these the first time you use Appshot, and only once.
 1. **Screen Recording.** Lets Appshot take the screenshot. Turn it on in System Settings → Privacy & Security → Screen & System Audio Recording. Then quit Appshot from its menu and open it again. macOS needs the restart.
 2. **Accessibility.** Lets Appshot paste into Claude or Codex for you. Turn it on in System Settings → Privacy & Security → Accessibility. If you skip this, Appshot still works. It just leaves the screenshot on your clipboard and you press ⌘V yourself.
 
+To check both at any time, click the menu bar icon. Each permission shows as on or off, and clicking one that's off takes you to the right settings page.
+
 ## How to use it
 
 1. Press **⌃⌥L** (Control + Option + L). Your screen freezes.
@@ -80,6 +82,18 @@ rm -rf /Applications/Appshot.app ~/Pictures/Appshot
 ```
 
 ## Something not working?
+
+**A permission is switched on in System Settings, but Appshot says it's off.** That switch belongs to an older copy of Appshot (v1.0.0 lost permissions on every update). Clear it and grant it again:
+
+```bash
+tccutil reset ScreenCapture local.appshot
+```
+
+```bash
+tccutil reset Accessibility local.appshot
+```
+
+Then click the menu bar icon and turn each one back on. From v1.0.1, permissions stay put when you update.
 
 **The screenshot is blank or only shows my wallpaper.** Screen Recording isn't on yet, or Appshot hasn't been restarted since you turned it on. Quit it from the menu and open it again.
 

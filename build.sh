@@ -26,8 +26,8 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
   <key>CFBundleIdentifier</key><string>local.appshot</string>
   <key>CFBundleExecutable</key><string>Appshot</string>
   <key>CFBundlePackageType</key><string>APPL</string>
-  <key>CFBundleShortVersionString</key><string>1.0</string>
-  <key>CFBundleVersion</key><string>1</string>
+  <key>CFBundleShortVersionString</key><string>1.0.1</string>
+  <key>CFBundleVersion</key><string>2</string>
   <key>LSMinimumSystemVersion</key><string>13.0</string>
   <key>LSUIElement</key><true/>
   <key>NSAppleEventsUsageDescription</key><string>Appshot opens a Terminal window to start a claude or codex CLI session.</string>
@@ -35,5 +35,9 @@ cat > "$APP/Contents/Info.plist" <<'PLIST'
 </plist>
 PLIST
 
-codesign --force --sign - "$APP"
+# An ad-hoc signature normally pins macOS permissions to this exact build, so
+# every rebuild or update would silently lose Screen Recording/Accessibility.
+# Pinning the requirement to the bundle ID keeps them across builds.
+codesign --force --sign - --identifier local.appshot \
+  --requirements '=designated => identifier "local.appshot"' "$APP"
 echo "Built $(pwd)/$APP"
